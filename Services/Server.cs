@@ -1,51 +1,41 @@
-﻿using Lesson6.Abstracts;
-using Lesson6.Models;
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
 using System.Net;
-using System.Net.Sockets;
-using System.Text;
 using System.Threading.Tasks;
+using Lesson6.Abstracts;
+using Lesson6.Models;
+using NetMQ;
+using NetMQ.Sockets;
 
 namespace Lesson6.Services
 {
     public class Server
     {
-        Dictionary<string, IPEndPoint> clients = new Dictionary<string, IPEndPoint>();
-        private readonly IMessageSource _messageSouce;
-        private IPEndPoint ep;
-        public Server(IMessageSource messageSouce)
-        {
-            _messageSouce = messageSouce;
-            ep = new IPEndPoint(IPAddress.Any, 0);
-        }
+        private readonly Dictionary<string, IPEndPoint> _clients = new Dictionary<string, IPEndPoint>();
+        private readonly IMessageSource _messageSource;
 
-        bool work = true;
-        public void Stop()
+        public Server(IMessageSource messageSource)
         {
-            work = false;
+            _messageSource = messageSource;
         }
 
         private async Task Register(NetMessage message)
         {
-            Console.WriteLine($" Message Register name = {message.NickNameFrom}");
+            Console.WriteLine($" Ник = {message.NickNameFrom}");
 
-            if (clients.TryAdd(message.NickNameFrom, message.EndPoint))
+            if (_clients.TryAdd(message.NickNameFrom, message.EndPoint))
             {
-                using (ChatContext context = new ChatContext())
+                using (var context = new ChatContext())
                 {
                     context.Users.Add(new User() { FullName = message.NickNameFrom });
                     await context.SaveChangesAsync();
                 }
-
             }
-
         }
+
         private async Task RelyMessage(NetMessage message)
         {
-            if (clients.TryGetValue(message.NickNameTo, out IPEndPoint ep))
+            if (_clients.TryGetValue(message.NickNameTo, out IPEndPoint ep))
             {
                 int? id = 0;
                 using (var ctx = new ChatContext())
@@ -62,20 +52,19 @@ namespace Lesson6.Services
 
                 message.Id = id;
 
-                await _messageSouce.SendAsync(message, ep);
+                await _messageSource.SendAsync(message, ep);
 
-                Console.WriteLine($"Message Relied, from = {message.NickNameFrom} to = {message.NickNameTo}");
+                Console.WriteLine($"От = {message.NickNameFrom} Кому = {message.NickNameTo}");
             }
             else
             {
                 Console.WriteLine("Пользователь не найден.");
             }
-
         }
 
-        async Task ConfirmMessageReceived(int? id)
+        private async Task ConfirmMessageReceived(int? id)
         {
-            Console.WriteLine("Message confirmation id=" + id);
+            Console.WriteLine("id = " + id);
 
             using (var ctx = new ChatContext())
             {
@@ -101,27 +90,26 @@ namespace Lesson6.Services
 
         public async Task Start()
         {
-
             Console.WriteLine("Сервер ожидает сообщения ");
 
-            while (work)
+            using (var subscriber = new SubscriberSocket())
             {
-                try
-                {
-                    var message = _messageSouce.Receive(ref ep);
-                    Console.WriteLine(message.ToString());
-                    await ProcessMessage(message);
+                subscriber.Bind("12345"); 
 
-                }
-                catch (Exception ex)
+                while (true)
                 {
-                    Console.WriteLine(ex);
+                    try
+                    {
+                        var message = _messageSource.Receive();
+                        Console.WriteLine(message.ToString());
+                        await ProcessMessage(message);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex);
+                    }
                 }
-
             }
-
-
         }
-
     }
 }

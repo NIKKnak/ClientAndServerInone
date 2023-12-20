@@ -4,16 +4,21 @@ using System.Text;
 using ChatApp;
 using ChatCommon.Abstractions;
 using ChatCommon.Models;
-
+using Lesson6.Models;
+using NetMQ;
+using NetMQ.Sockets;
 
 namespace ChatApp
 {
-    public class UdpMessageSouceServer : IMessageSourceServer<IPEndPoint>
+    public class NetMQMessageSourceServer : IMessageSourceServer<IPEndPoint>
     {
-        private readonly UdpClient _udpClient;
-        public UdpMessageSouceServer()
+        private readonly PublisherSocket _publisher;
+        private readonly SubscriberSocket _subscriber;
+
+        public NetMQMessageSourceServer()
         {
-            _udpClient = new UdpClient(12345);
+            _publisher = new PublisherSocket();
+            _subscriber = new SubscriberSocket();
         }
 
         public IPEndPoint CopyEndpoint(IPEndPoint ep)
@@ -28,16 +33,26 @@ namespace ChatApp
 
         public NetMessage Receive(ref IPEndPoint ep)
         {
-            byte[] data = _udpClient.Receive(ref ep);
-            string str = Encoding.UTF8.GetString(data);
+            string str = _subscriber.ReceiveFrameString();
             return NetMessage.DeserializeMessgeFromJSON(str) ?? new NetMessage();
         }
 
         public async Task SendAsync(NetMessage message, IPEndPoint ep)
         {
-            byte[] buffer = Encoding.UTF8.GetBytes(message.SerialazeMessageToJSON());
-
-            await _udpClient.SendAsync(buffer, buffer.Length, ep);
+            _publisher.SendMoreFrame("").SendFrame(message.SerialazeMessageToJSON());
+            await Task.CompletedTask;
         }
+
+        public void Connect(IPEndPoint endpoint)
+        {
+            _subscriber.Connect(endpoint.ToString());
+            _subscriber.SubscribeToAnyTopic();
+        }
+
+        public void Bind(IPEndPoint endpoint)
+        {
+            _publisher.Bind(endpoint.ToString());
+        }
+
     }
 }

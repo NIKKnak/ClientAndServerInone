@@ -1,44 +1,53 @@
-﻿using ChatCommon.Abstractions;
-using ChatCommon.Models;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
+﻿using System.Text;
+using System.Threading.Tasks;
+using Lesson6.Models;
+using NetMQ;
+using NetMQ.Sockets;
 
-
-namespace ChatApp
+namespace ChatAppLib
 {
-    public class UdpMessageSourceClient : IMessageSourceClient<IPEndPoint>
+    public class NetMQMessageSource : IMessageSource
     {
-        private readonly UdpClient _udpClient;
-        private readonly IPEndPoint _udpEndPoint;
-        public UdpMessageSourceClient(string Ip = "172.0.0.1", int port = 0)
+        private readonly string _address;
+        private readonly int _port;
+        private readonly NetMQSocket _subscriber;
+
+        public NetMQMessageSource(string address = "tcp://127.0.0.1", int port = 5527)
         {
-            _udpClient = new UdpClient(5527);
-            _udpEndPoint = new IPEndPoint(IPAddress.Parse(Ip), port);
+            _address = address;
+            _port = port;
+
+            _subscriber = new SubscriberSocket();
+            _subscriber.Connect($"{_address}:{_port}");
+            _subscriber.SubscribeToAnyTopic();
         }
 
-        public IPEndPoint CreateEndpoint()
+        public NetMessage Receive()
         {
-            return new IPEndPoint(IPAddress.Any, 0);
+            string message = _subscriber.ReceiveFrameString();
+            return NetMessage.DeserializeMessgeFromJSON(message) ?? new NetMessage();
+        }
+    }
+
+    public class NetMQMessageSourceClient : IMessageSourceClient
+    {
+        private readonly string _address;
+        private readonly int _port;
+        private readonly NetMQSocket _publisher;
+
+        public NetMQMessageSourceClient(string address = "tcp://127.0.0.1", int port = 5527)
+        {
+            _address = address;
+            _port = port;
+
+            _publisher = new PublisherSocket();
+            _publisher.Bind($"{_address}:{_port}");
         }
 
-        public IPEndPoint GetServer()
+        public async Task SendAsync(NetMessage message)
         {
-            return _udpEndPoint;
-        }
-
-        public NetMessage Receive(ref IPEndPoint ep)
-        {
-            byte[] data = _udpClient.Receive(ref ep);
-            string str = Encoding.UTF8.GetString(data);
-            return NetMessage.DeserializeMessgeFromJSON(str) ?? new NetMessage();
-        }
-
-        public async Task SendAsync(NetMessage message, IPEndPoint ep)
-        {
-            byte[] buffer = Encoding.UTF8.GetBytes(message.SerialazeMessageToJSON());
-
-            await _udpClient.SendAsync(buffer, buffer.Length, ep);
+            string serializedMessage = message.SerialazeMessageToJSON();
+            await _publisher.SendFrameAsync(serializedMessage);
         }
     }
 }

@@ -1,35 +1,72 @@
 ﻿using Lesson6.Abstracts;
 using Lesson6.Models;
+using NetMQ;
+using NetMQ.Sockets;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 
-
 namespace Lesson6.Services
 {
-    internal class UdpMessageSouce : IMessageSource
+    internal class NetMQMessageSource : IMessageSource
     {
-        private readonly UdpClient _udpClient;
-        public UdpMessageSouce()
+        private readonly SubscriberSocket _subscriberSocket;
+        private readonly IPEndPoint _ep;
+
+        public NetMQMessageSource(IPEndPoint ep)
         {
-            _udpClient = new UdpClient(12345);
+            _subscriberSocket = new SubscriberSocket();
+            _ep = ep;
         }
-        public  NetMessage Receive(ref IPEndPoint ep)
+
+        public NetMessage Receive(ref IPEndPoint ep)
         {
-            byte[] data = _udpClient.Receive(ref ep);
+            byte[] data = _subscriberSocket.ReceiveFrameBytes();
             string str = Encoding.UTF8.GetString(data);
             return NetMessage.DeserializeMessgeFromJSON(str) ?? new NetMessage();
         }
 
-        public async Task SendAsync(NetMessage message, IPEndPoint ep)
+        public void Subscribe(string topic)
+        {
+            _subscriberSocket.Subscribe(topic);
+        }
+    }
+
+    internal class NetMQMessageSourceClient : IMessageSourceClient
+    {
+        private readonly RequestSocket _requestSocket;
+        private readonly IPEndPoint _ep;
+
+        public NetMQMessageSourceClient(IPEndPoint ep)
+        {
+            _requestSocket = new RequestSocket();
+            _ep = ep;
+        }
+
+        public void Connect()
+        {
+            _requestSocket.Connect(_ep);
+        }
+
+        public void Disconnect()
+        {
+            _requestSocket.Disconnect(_ep);
+        }
+
+        public void Send(NetMessage message)
         {
             byte[] buffer = Encoding.UTF8.GetBytes(message.SerialazeMessageToJSON());
+            _requestSocket.SendFrame(buffer);
+        }
 
-         await   _udpClient.SendAsync(buffer, buffer.Length, ep);
+        public NetMessage Receive()
+        {
+            byte[] data = _requestSocket.ReceiveFrameBytes();
+            string str = Encoding.UTF8.GetString(data);
+            return NetMessage.DeserializeMessgeFromJSON(str) ?? new NetMessage();
         }
     }
 }

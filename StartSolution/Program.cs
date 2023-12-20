@@ -7,13 +7,13 @@ internal class Program
     {
         if (args.Length == 0)
         {
-            var s = new Server<IPEndPoint>(new UdpMessageSouceServer());
+            var s = new Server<IPEndPoint>(new NetMQMessageSourceServer());
             await s.Start();
         }
         else
         if (args.Length == 1)
         {
-            var c = new Client<IPEndPoint>(new UdpMessageSourceClient(), args[0]);
+            var c = new Client<IPEndPoint>(new NetMQMessageSourceClient(), args[0]);
             await c.Start();
         }
         else
